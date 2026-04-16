@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Recommender Agent</title>
+    <script src="https://cdn.plot.ly/plotly-2.35.0.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #0a0e17;
+            color: #e0e6ed;
+            min-height: 100vh;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #0d1321 0%, #1a1f36 100%);
+            border-bottom: 1px solid #2a3050;
+            padding: 20px 40px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .header h1 {
+            font-size: 22px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        .header .badge {
+            background: #22c55e;
+            color: #000;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+
+        /* ---- Step indicators ---- */
+        .steps {
+            display: flex;
+            gap: 0;
+            margin-bottom: 30px;
+            background: #111827;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid #1e293b;
+        }
+
+        .step {
+            flex: 1;
+            padding: 16px 20px;
+            text-align: center;
+            font-size: 13px;
+            font-weight: 500;
+            color: #64748b;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .step.active {
+            background: #1e293b;
+            color: #60a5fa;
+        }
+
+        .step.completed {
+            background: #0f2a1d;
+            color: #22c55e;
+        }
+
+        .step-number {
+            display: inline-block;
+            width: 24px;
+            height: 24px;
+            line-height: 24px;
+            border-radius: 50%;
+            background: #1e293b;
+            color: #64748b;
+            font-size: 12px;
+            font-weight: 700;
+            margin-right: 8px;
+        }
+
+        .step.active .step-number { background: #1e40af; color: #fff; }
+        .step.completed .step-number { background: #166534; color: #fff; }
+
+        /* ---- Cards ---- */
+        .card {
+            background: #111827;
+            border: 1px solid #1e293b;
+            border-radius: 12px;
+            padding: 28px;
+            margin-bottom: 24px;
+        }
+
+        .card h2 {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #f1f5f9;
+        }
+
+        /* ---- Form ---- */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+
+        label {
+            font-size: 13px;
+            font-weight: 500;
+            color: #94a3b8;
+        }
+
+        input, select, textarea {
+            background: #0a0e17;
+            border: 1px solid #2a3050;
+            border-radius: 8px;
+            padding: 10px 14px;
+            color: #e0e6ed;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        input:focus, select:focus, textarea:focus {
+            outline: none;
+            border-color: #3b82f6;
+        }
+
+        textarea { resize: vertical; min-height: 60px; }
+
+        .btn {
+            padding: 12px 28px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-primary {
+            background: #3b82f6;
+            color: #fff;
+        }
+
+        .btn-primary:hover { background: #2563eb; }
+
+        .btn-primary:disabled {
+            background: #1e3a5f;
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        .btn-secondary {
+            background: #1e293b;
+            color: #94a3b8;
+            border: 1px solid #334155;
+        }
+
+        .btn-secondary:hover { background: #334155; color: #e2e8f0; }
+
+        .btn-success {
+            background: #22c55e;
+            color: #000;
+        }
+
+        .btn-success:hover { background: #16a34a; }
+
+        /* ---- Loading ---- */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 60px 20px;
+        }
+
+        .loading.visible { display: block; }
+
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 3px solid #1e293b;
+            border-top-color: #3b82f6;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .loading-steps {
+            list-style: none;
+            max-width: 360px;
+            margin: 0 auto;
+            text-align: left;
+        }
+
+        .loading-steps li {
+            padding: 8px 0;
+            font-size: 13px;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .loading-steps li.done { color: #22c55e; }
+        .loading-steps li.active { color: #60a5fa; }
+
+        .loading-steps li::before {
+            content: "○";
+            font-size: 10px;
+        }
+
+        .loading-steps li.done::before { content: "●"; color: #22c55e; }
+        .loading-steps li.active::before { content: "◉"; color: #60a5fa; }
+
+        /* ---- Recommendations ---- */
+        .rec-grid {
+            display: grid;
+            gap: 16px;
+        }
+
+        .rec-card {
+            background: #0a0e17;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 16px;
+            align-items: center;
+        }
+
+        .rec-card:hover {
+            border-color: #3b82f6;
+            background: #0f1729;
+        }
+
+        .rec-card.selected {
+            border-color: #22c55e;
+            background: #0a1a12;
+        }
+
+        .rec-rank {
+            width: 40px;
+            height: 40px;
+            line-height: 40px;
+            text-align: center;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 700;
+        }
+
+        .rec-rank.gold { background: #422006; color: #fbbf24; }
+        .rec-rank.silver { background: #1e293b; color: #94a3b8; }
+        .rec-rank.bronze { background: #1c1917; color: #a8a29e; }
+        .rec-rank.other { background: #111827; color: #64748b; }
+
+        .rec-info h3 {
+            font-size: 16px;
+            color: #f1f5f9;
+            margin-bottom: 4px;
+        }
+
+        .rec-info .ticker {
+            font-size: 12px;
+            color: #60a5fa;
+            font-weight: 600;
+        }
+
+        .rec-info .reasoning {
+            font-size: 12px;
+            color: #94a3b8;
+            margin-top: 6px;
+            line-height: 1.5;
+        }
+
+        .rec-metrics {
+            text-align: right;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .rec-price {
+            font-size: 18px;
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .rec-score {
+            font-size: 12px;
+            padding: 2px 8px;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+
+        .score-high { background: #052e16; color: #22c55e; }
+        .score-mid { background: #422006; color: #f59e0b; }
+        .score-low { background: #450a0a; color: #ef4444; }
+
+        .rec-alloc {
+            font-size: 12px;
+            color: #64748b;
+        }
+
+        .risk-badge {
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-weight: 600;
+        }
+
+        .risk-low { background: #052e16; color: #4ade80; }
+        .risk-medium { background: #422006; color: #fbbf24; }
+        .risk-high { background: #450a0a; color: #f87171; }
+
+        .portfolio-summary {
+            background: #0a0e17;
+            border: 1px solid #1e293b;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 16px;
+            font-size: 14px;
+            line-height: 1.7;
+            color: #94a3b8;
+        }
+
+        .portfolio-summary strong { color: #e2e8f0; }
+
+        /* ---- Chart section ---- */
+        .chart-container {
+            background: #0a0e17;
+            border-radius: 10px;
+            border: 1px solid #1e293b;
+            padding: 20px;
+            margin-top: 16px;
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .chart-header h3 {
+            font-size: 16px;
+            color: #f1f5f9;
+        }
+
+        .chart-controls {
+            display: flex;
+            gap: 8px;
+        }
+
+        .chart-controls button {
+            padding: 6px 14px;
+            border: 1px solid #334155;
+            background: #111827;
+            color: #94a3b8;
+            border-radius: 6px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .chart-controls button.active {
+            background: #1e40af;
+            color: #fff;
+            border-color: #3b82f6;
+        }
+
+        .meta-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-top: 16px;
+        }
+
+        .meta-item {
+            background: #111827;
+            border-radius: 8px;
+            padding: 14px;
+        }
+
+        .meta-item .label {
+            font-size: 11px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .meta-item .value {
+            font-size: 16px;
+            font-weight: 600;
+            color: #f1f5f9;
+        }
+
+        .hidden { display: none; }
+
+        .error-box {
+            background: #450a0a;
+            border: 1px solid #7f1d1d;
+            color: #fca5a5;
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 16px;
+        }
+
+        .back-btn {
+            margin-bottom: 16px;
+        }
+
+        @media (max-width: 640px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .rec-card { grid-template-columns: 1fr; }
+            .rec-metrics { text-align: left; flex-direction: row; gap: 12px; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>Stock Recommender Agent</h1>
+    <span class="badge">AI-Powered</span>
+</div>
+
+<div class="container">
+    <!-- Step indicators -->
+    <div class="steps">
+        <div class="step active" id="step1-indicator">
+            <span class="step-number">1</span> Your Preferences
+        </div>
+        <div class="step" id="step2-indicator">
+            <span class="step-number">2</span> AI Research
+        </div>
+        <div class="step" id="step3-indicator">
+            <span class="step-number">3</span> Recommendations
+        </div>
+        <div class="step" id="step4-indicator">
+            <span class="step-number">4</span> Projection
+        </div>
+    </div>
+
+    <!-- STEP 1: Input form -->
+    <div id="step1" class="card">
+        <h2>Tell us about your investment goals</h2>
+        <form id="preferences-form" class="form-grid">
+            <div class="form-group full-width">
+                <label for="api_key">OpenAI API Key</label>
+                <input type="password" id="api_key" placeholder="sk-..." autocomplete="off" required>
+                <span style="font-size:11px;color:#64748b;">Your key is sent directly to OpenAI and is never stored.</span>
+            </div>
+            <div class="form-group">
+                <label for="investment_amount">Investment Amount ($)</label>
+                <input type="number" id="investment_amount" value="10000" min="100" step="100">
+            </div>
+            <div class="form-group">
+                <label for="num_stocks">Number of Stocks</label>
+                <select id="num_stocks">
+                    <option value="2">2 stocks</option>
+                    <option value="3" selected>3 stocks</option>
+                    <option value="4">4 stocks</option>
+                    <option value="5">5 stocks</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="risk_level">Risk Tolerance</label>
+                <select id="risk_level">
+                    <option value="conservative">Conservative (Low Risk)</option>
+                    <option value="moderate" selected>Moderate (Balanced)</option>
+                    <option value="aggressive">Aggressive (High Risk)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="industry">Preferred Industry / Sector</label>
+                <select id="industry">
+                    <option value="technology">Technology</option>
+                    <option value="healthcare">Healthcare</option>
+                    <option value="finance">Finance</option>
+                    <option value="energy">Energy</option>
+                    <option value="consumer">Consumer / Retail</option>
+                    <option value="industrials">Industrials</option>
+                    <option value="real estate">Real Estate</option>
+                    <option value="telecommunications">Telecommunications</option>
+                    <option value="materials">Materials</option>
+                    <option value="utilities">Utilities</option>
+                </select>
+            </div>
+            <div class="form-group full-width">
+                <label for="notes">Additional Preferences (optional)</label>
+                <textarea id="notes" placeholder="e.g. I prefer dividend-paying stocks, avoid crypto-related companies..."></textarea>
+            </div>
+            <div class="form-group full-width">
+                <button type="submit" class="btn btn-primary" id="submit-btn">
+                    Find My Stocks
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- STEP 2: Loading / agent working -->
+    <div id="step2" class="card hidden">
+        <div class="loading visible">
+            <div class="spinner"></div>
+            <p style="color: #94a3b8; margin-bottom: 20px;">The AI agent is researching stocks for you...</p>
+            <ul class="loading-steps" id="agent-steps">
+                <li class="active">Searching stocks in your preferred industry</li>
+                <li>Analyzing financial data and fundamentals</li>
+                <li>Evaluating risk profiles</li>
+                <li>Checking news sentiment</li>
+                <li>Generating personalized recommendations</li>
+            </ul>
+        </div>
+    </div>
+
+    <!-- STEP 3: Recommendations -->
+    <div id="step3" class="card hidden">
+        <h2>Recommended Stocks</h2>
+        <p style="color: #94a3b8; font-size: 13px; margin-bottom: 16px;">Click a stock to view its detailed projection and analysis.</p>
+        <div class="rec-grid" id="rec-grid"></div>
+        <div class="portfolio-summary" id="portfolio-summary"></div>
+        <div style="margin-top: 20px; display: flex; gap: 12px;">
+            <button class="btn btn-secondary" onclick="startOver()">Start Over</button>
+        </div>
+    </div>
+
+    <!-- STEP 4: Projection chart -->
+    <div id="step4" class="card hidden">
+        <button class="btn btn-secondary back-btn" onclick="backToRecommendations()">Back to Recommendations</button>
+        <div class="chart-container">
+            <div class="chart-header">
+                <h3 id="chart-title">Stock Projection</h3>
+                <div class="chart-controls">
+                    <button class="active" onclick="setProjection(3, this)">3 Months</button>
+                    <button onclick="setProjection(6, this)">6 Months</button>
+                    <button onclick="setProjection(12, this)">12 Months</button>
+                </div>
+            </div>
+            <div id="chart" style="width:100%; height:480px;"></div>
+            <div class="meta-grid" id="meta-grid"></div>
+        </div>
+        <div id="chart-loading" class="loading">
+            <div class="spinner"></div>
+            <p style="color: #94a3b8;">Loading projection data...</p>
+        </div>
+    </div>
+
+    <!-- Errors -->
+    <div id="error-box" class="error-box hidden"></div>
+</div>
+
+<script>
+    let currentTicker = null;
+    let recommendations = null;
+
+    // Step management
+    function setStep(n) {
+        for (let i = 1; i <= 4; i++) {
+            document.getElementById(`step${i}`).classList.toggle('hidden', i !== n && !(i === 2 && n === 2));
+            const ind = document.getElementById(`step${i}-indicator`);
+            ind.classList.remove('active', 'completed');
+            if (i < n) ind.classList.add('completed');
+            if (i === n) ind.classList.add('active');
+        }
+        // Show the correct card
+        for (let i = 1; i <= 4; i++) {
+            document.getElementById(`step${i}`).classList.toggle('hidden', i !== n);
+        }
+        document.getElementById('error-box').classList.add('hidden');
+    }
+
+    // Animate loading steps
+    function animateLoadingSteps() {
+        const items = document.querySelectorAll('#agent-steps li');
+        let idx = 0;
+        const interval = setInterval(() => {
+            if (idx > 0) items[idx - 1].classList.replace('active', 'done');
+            if (idx < items.length) {
+                items[idx].classList.add('active');
+                idx++;
+            } else {
+                clearInterval(interval);
+            }
+        }, 3000);
+        return interval;
+    }
+
+    // Form submission
+    document.getElementById('preferences-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const btn = document.getElementById('submit-btn');
+        btn.disabled = true;
+
+        setStep(2);
+        const loadingInterval = animateLoadingSteps();
+
+        const payload = {
+            api_key: document.getElementById('api_key').value,
+            investment_amount: parseFloat(document.getElementById('investment_amount').value),
+            risk_level: document.getElementById('risk_level').value,
+            industry: document.getElementById('industry').value,
+            num_stocks: parseInt(document.getElementById('num_stocks').value),
+            notes: document.getElementById('notes').value,
+        };
+
+        try {
+            const res = await fetch('/api/recommend', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            const data = await res.json();
+            clearInterval(loadingInterval);
+
+            if (data.error) {
+                showError(data.error);
+                setStep(1);
+                btn.disabled = false;
+                return;
+            }
+
+            recommendations = data;
+            renderRecommendations(data, payload.investment_amount);
+            setStep(3);
+        } catch (err) {
+            clearInterval(loadingInterval);
+            showError('Failed to get recommendations. Make sure your OpenAI API key is set.');
+            setStep(1);
+        }
+        btn.disabled = false;
+    });
+
+    function showError(msg) {
+        const box = document.getElementById('error-box');
+        box.textContent = msg;
+        box.classList.remove('hidden');
+    }
+
+    function renderRecommendations(data, investmentAmount) {
+        const grid = document.getElementById('rec-grid');
+        grid.innerHTML = '';
+
+        const recs = data.recommendations || [];
+        const rankClasses = ['gold', 'silver', 'bronze'];
+
+        recs.forEach((rec, i) => {
+            const card = document.createElement('div');
+            card.className = 'rec-card';
+            card.onclick = () => selectStock(rec.ticker, card);
+
+            const scoreClass = rec.recommendation_score >= 7 ? 'score-high' :
+                               rec.recommendation_score >= 5 ? 'score-mid' : 'score-low';
+            const riskClass = (rec.risk_level || '').toLowerCase().includes('low') ? 'risk-low' :
+                              (rec.risk_level || '').toLowerCase().includes('high') ? 'risk-high' : 'risk-medium';
+
+            const allocation = rec.suggested_allocation_pct || 0;
+            const dollarAlloc = (investmentAmount * allocation / 100).toFixed(0);
+
+            card.innerHTML = `
+                <div class="rec-rank ${rankClasses[i] || 'other'}">${i + 1}</div>
+                <div class="rec-info">
+                    <h3>${rec.name || rec.ticker}</h3>
+                    <span class="ticker">${rec.ticker}</span>
+                    <span class="risk-badge ${riskClass}" style="margin-left:8px">${rec.risk_level || 'N/A'} Risk</span>
+                    <p class="reasoning">${rec.reasoning || ''}</p>
+                </div>
+                <div class="rec-metrics">
+                    <span class="rec-price">$${(rec.current_price || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                    <span class="rec-score ${scoreClass}">${rec.recommendation_score}/10</span>
+                    <span class="rec-alloc">${allocation}% &middot; $${parseInt(dollarAlloc).toLocaleString()}</span>
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+
+        const summary = document.getElementById('portfolio-summary');
+        summary.innerHTML = `
+            <strong>Portfolio Strategy:</strong> ${data.portfolio_summary || 'N/A'}
+            <br><strong>Risk Assessment:</strong> ${data.risk_assessment || 'N/A'}
+        `;
+    }
+
+    async function selectStock(ticker, cardEl) {
+        // Highlight selected card
+        document.querySelectorAll('.rec-card').forEach(c => c.classList.remove('selected'));
+        if (cardEl) cardEl.classList.add('selected');
+
+        currentTicker = ticker;
+        setStep(4);
+        await loadProjection(ticker, 6);
+    }
+
+    async function loadProjection(ticker, months) {
+        const chartDiv = document.getElementById('chart');
+        const loading = document.getElementById('chart-loading');
+        const metaGrid = document.getElementById('meta-grid');
+
+        chartDiv.innerHTML = '';
+        metaGrid.innerHTML = '';
+        loading.classList.add('visible');
+        loading.style.display = 'block';
+
+        try {
+            const res = await fetch(`/api/projection/${ticker}?months=${months}`);
+            const data = await res.json();
+
+            loading.classList.remove('visible');
+            loading.style.display = 'none';
+
+            if (data.error) {
+                showError(data.error);
+                return;
+            }
+
+            document.getElementById('chart-title').textContent =
+                `${data.name} (${data.ticker}) — Price Projection`;
+
+            renderChart(data);
+            renderMeta(data);
+        } catch (err) {
+            loading.classList.remove('visible');
+            loading.style.display = 'none';
+            showError('Failed to load projection data.');
+        }
+    }
+
+    function renderChart(data) {
+        const hist = data.historical;
+        const proj = data.projection;
+        const meta = data.metadata;
+
+        const traces = [];
+
+        // Historical price
+        traces.push({
+            x: hist.dates,
+            y: hist.prices,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Historical Price',
+            line: { color: '#3b82f6', width: 2 },
+        });
+
+        // Moving averages
+        traces.push({
+            x: hist.dates,
+            y: hist.ma_20,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'MA 20',
+            line: { color: '#f59e0b', width: 1, dash: 'dot' },
+            connectgaps: false,
+        });
+
+        traces.push({
+            x: hist.dates,
+            y: hist.ma_50,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'MA 50',
+            line: { color: '#a855f7', width: 1, dash: 'dot' },
+            connectgaps: false,
+        });
+
+        // Projected price
+        const projDatesWithBridge = [hist.dates[hist.dates.length - 1], ...proj.dates];
+        const projPricesWithBridge = [hist.prices[hist.prices.length - 1], ...proj.prices];
+        const upperWithBridge = [hist.prices[hist.prices.length - 1], ...proj.upper_band];
+        const lowerWithBridge = [hist.prices[hist.prices.length - 1], ...proj.lower_band];
+
+        traces.push({
+            x: projDatesWithBridge,
+            y: projPricesWithBridge,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Projected Price',
+            line: { color: '#22c55e', width: 2.5 },
+        });
+
+        // Confidence band (upper)
+        traces.push({
+            x: projDatesWithBridge,
+            y: upperWithBridge,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Upper Band',
+            line: { color: 'rgba(34,197,94,0.3)', width: 0 },
+            showlegend: false,
+        });
+
+        // Confidence band (lower, filled to upper)
+        traces.push({
+            x: projDatesWithBridge,
+            y: lowerWithBridge,
+            type: 'scatter',
+            mode: 'lines',
+            name: 'Confidence Band',
+            line: { color: 'rgba(34,197,94,0.3)', width: 0 },
+            fill: 'tonexty',
+            fillcolor: 'rgba(34,197,94,0.08)',
+        });
+
+        // Analyst target line
+        if (meta.analyst_target) {
+            traces.push({
+                x: [hist.dates[0], proj.dates[proj.dates.length - 1]],
+                y: [meta.analyst_target, meta.analyst_target],
+                type: 'scatter',
+                mode: 'lines',
+                name: `Analyst Target ($${meta.analyst_target})`,
+                line: { color: '#ef4444', width: 1.5, dash: 'dash' },
+            });
+        }
+
+        const layout = {
+            paper_bgcolor: '#0a0e17',
+            plot_bgcolor: '#0a0e17',
+            font: { color: '#94a3b8', size: 12 },
+            margin: { t: 10, r: 20, b: 50, l: 60 },
+            xaxis: {
+                gridcolor: '#1e293b',
+                showgrid: true,
+                type: 'date',
+            },
+            yaxis: {
+                gridcolor: '#1e293b',
+                showgrid: true,
+                title: 'Price ($)',
+                tickprefix: '$',
+            },
+            legend: {
+                orientation: 'h',
+                y: -0.15,
+                x: 0.5,
+                xanchor: 'center',
+                font: { size: 11 },
+            },
+            hovermode: 'x unified',
+            shapes: [{
+                type: 'line',
+                x0: hist.dates[hist.dates.length - 1],
+                x1: hist.dates[hist.dates.length - 1],
+                y0: 0,
+                y1: 1,
+                yref: 'paper',
+                line: { color: '#475569', width: 1, dash: 'dot' },
+            }],
+            annotations: [{
+                x: hist.dates[hist.dates.length - 1],
+                y: 1.02,
+                yref: 'paper',
+                text: 'Today',
+                showarrow: false,
+                font: { color: '#94a3b8', size: 11 },
+            }],
+        };
+
+        Plotly.newPlot('chart', traces, layout, { responsive: true, displayModeBar: false });
+    }
+
+    function renderMeta(data) {
+        const meta = data.metadata;
+        const grid = document.getElementById('meta-grid');
+        const proj = data.projection;
+
+        const projEnd = proj.prices[proj.prices.length - 1];
+        const pctChange = ((projEnd - data.current_price) / data.current_price * 100).toFixed(1);
+        const sign = pctChange >= 0 ? '+' : '';
+
+        const items = [
+            { label: 'Current Price', value: `$${data.current_price}` },
+            { label: `Projected (${meta.projection_months}mo)`, value: `$${projEnd} (${sign}${pctChange}%)` },
+            { label: 'Analyst Target', value: meta.analyst_target ? `$${meta.analyst_target}` : 'N/A' },
+            { label: 'Annual Volatility', value: `${meta.annual_volatility}%` },
+            { label: 'Beta', value: meta.beta || 'N/A' },
+            { label: 'Earnings Growth', value: meta.earnings_growth ? `${(meta.earnings_growth * 100).toFixed(1)}%` : 'N/A' },
+            { label: 'Revenue Growth', value: meta.revenue_growth ? `${(meta.revenue_growth * 100).toFixed(1)}%` : 'N/A' },
+            { label: 'Daily Trend', value: `$${meta.daily_trend}` },
+        ];
+
+        grid.innerHTML = items.map(item => `
+            <div class="meta-item">
+                <div class="label">${item.label}</div>
+                <div class="value">${item.value}</div>
+            </div>
+        `).join('');
+    }
+
+    function setProjection(months, btnEl) {
+        document.querySelectorAll('.chart-controls button').forEach(b => b.classList.remove('active'));
+        if (btnEl) btnEl.classList.add('active');
+        if (currentTicker) loadProjection(currentTicker, months);
+    }
+
+    function backToRecommendations() {
+        setStep(3);
+    }
+
+    function startOver() {
+        setStep(1);
+        recommendations = null;
+        currentTicker = null;
+    }
+</script>
+
+</body>
+</html>
