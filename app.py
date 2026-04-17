@@ -21,69 +21,7 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# ---------------------------------------------------------------------------
-# Tool definitions that the LLM agent can call
-# ---------------------------------------------------------------------------
-
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search_stocks_by_industry",
-            "description": "Search for top stocks in a given industry/sector. Returns ticker symbols and basic info.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "industry": {"type": "string", "description": "The industry or sector to search (e.g. 'Technology', 'Healthcare', 'Energy')"},
-                    "count": {"type": "integer", "description": "Number of stocks to return"},
-                },
-                "required": ["industry", "count"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_stock_data",
-            "description": "Get detailed financial data for a specific stock ticker including price, fundamentals, and recent performance.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string", "description": "Stock ticker symbol (e.g. 'AAPL')"},
-                },
-                "required": ["ticker"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "analyze_risk_profile",
-            "description": "Analyze the risk profile of a stock based on volatility, beta, and other risk metrics.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string", "description": "Stock ticker symbol"},
-                },
-                "required": ["ticker"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "get_news_sentiment",
-            "description": "Get recent news headlines and overall sentiment for a stock.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "ticker": {"type": "string", "description": "Stock ticker symbol"},
-                },
-                "required": ["ticker"],
-            },
-        },
-    },
-]
+# (Tool definitions removed — using pre-fetch + single LLM call for speed)
 
 # ---------------------------------------------------------------------------
 # Industry → representative tickers mapping
@@ -204,131 +142,100 @@ def _match_industry(query: str) -> str:
     return "technology"  # default
 
 
+# (Individual tool functions removed — data is now pre-fetched in bulk)
+
+
 # ---------------------------------------------------------------------------
-# Tool implementations
+# Pre-fetch + single LLM call approach (fast enough for Render free tier)
 # ---------------------------------------------------------------------------
 
-def search_stocks_by_industry(industry: str, count: int) -> dict:
-    sector = _match_industry(industry)
-    tickers = INDUSTRY_TICKERS.get(sector, INDUSTRY_TICKERS["technology"])[:count]
+def _prefetch_stock_data(tickers: list) -> list:
+    """Fetch data for multiple tickers quickly using concurrent-style batch."""
     results = []
     for t in tickers:
         info = _get_ticker_info(t)
+        if not info:
+            continue
+        hist = _get_ticker_history(t, "1y")
+        volatility = None
+        if not hist.empty and len(hist) > 20:
+            returns = hist["Close"].pct_change().dropna()
+            volatility = round(float(returns.std() * np.sqrt(252) * 100), 2)
+
+        news = _get_ticker_news(t)
+        headlines = []
+        for item in news[:3]:
+            content = item.get("content", {})
+            title = content.get("title") if isinstance(content, dict) else item.get("title", "")
+            if title:
+                headlines.append(title)
+
         results.append({
             "ticker": t,
             "name": info.get("shortName", t),
-            "sector": info.get("sector", sector),
-            "market_cap": info.get("marketCap", "N/A"),
+            "sector": info.get("sector", "N/A"),
             "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
+            "market_cap": info.get("marketCap", "N/A"),
+            "pe_ratio": info.get("trailingPE", "N/A"),
+            "forward_pe": info.get("forwardPE", "N/A"),
+            "dividend_yield": info.get("dividendYield", "N/A"),
+            "beta": info.get("beta", "N/A"),
+            "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
+            "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
+            "target_price": info.get("targetMeanPrice", "N/A"),
+            "revenue_growth": info.get("revenueGrowth", "N/A"),
+            "earnings_growth": info.get("earningsGrowth", "N/A"),
+            "profit_margin": info.get("profitMargins", "N/A"),
+            "debt_to_equity": info.get("debtToEquity", "N/A"),
+            "recommendation": info.get("recommendationKey", "N/A"),
+            "annual_volatility_pct": volatility,
+            "recent_headlines": headlines,
         })
-    return {"industry": sector, "stocks": results}
+    return results
 
-
-def get_stock_data(ticker: str) -> dict:
-    info = _get_ticker_info(ticker)
-    hist = _get_ticker_history(ticker, "6mo")
-    recent_prices = []
-    if not hist.empty:
-        last_5 = hist.tail(5)
-        for date, row in last_5.iterrows():
-            recent_prices.append({"date": str(date.date()), "close": round(row["Close"], 2)})
-
-    return {
-        "ticker": ticker,
-        "name": info.get("shortName", ticker),
-        "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
-        "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
-        "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
-        "pe_ratio": info.get("trailingPE", "N/A"),
-        "forward_pe": info.get("forwardPE", "N/A"),
-        "dividend_yield": info.get("dividendYield", "N/A"),
-        "market_cap": info.get("marketCap", "N/A"),
-        "revenue": info.get("totalRevenue", "N/A"),
-        "profit_margin": info.get("profitMargins", "N/A"),
-        "debt_to_equity": info.get("debtToEquity", "N/A"),
-        "earnings_growth": info.get("earningsGrowth", "N/A"),
-        "revenue_growth": info.get("revenueGrowth", "N/A"),
-        "recommendation": info.get("recommendationKey", "N/A"),
-        "target_price": info.get("targetMeanPrice", "N/A"),
-        "recent_prices": recent_prices,
-    }
-
-
-def analyze_risk_profile(ticker: str) -> dict:
-    info = _get_ticker_info(ticker)
-    hist = _get_ticker_history(ticker, "1y")
-    volatility = None
-    if not hist.empty and len(hist) > 20:
-        returns = hist["Close"].pct_change().dropna()
-        volatility = round(float(returns.std() * np.sqrt(252) * 100), 2)
-
-    return {
-        "ticker": ticker,
-        "beta": info.get("beta", "N/A"),
-        "annual_volatility_pct": volatility or "N/A",
-        "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
-        "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
-        "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
-        "debt_to_equity": info.get("debtToEquity", "N/A"),
-        "current_ratio": info.get("currentRatio", "N/A"),
-        "risk_assessment": (
-            "High" if (volatility and volatility > 40) else
-            "Medium" if (volatility and volatility > 25) else
-            "Low" if volatility else "Unknown"
-        ),
-    }
-
-
-def get_news_sentiment(ticker: str) -> dict:
-    news = _get_ticker_news(ticker)
-    headlines = []
-    for item in news[:5]:
-        content = item.get("content", {})
-        title = content.get("title") if isinstance(content, dict) else item.get("title", "")
-        headlines.append(title or "N/A")
-    return {
-        "ticker": ticker,
-        "recent_headlines": headlines,
-        "headline_count": len(headlines),
-    }
-
-
-# Map tool names to functions
-TOOL_FUNCTIONS = {
-    "search_stocks_by_industry": search_stocks_by_industry,
-    "get_stock_data": get_stock_data,
-    "analyze_risk_profile": analyze_risk_profile,
-    "get_news_sentiment": get_news_sentiment,
-}
-
-
-# ---------------------------------------------------------------------------
-# Agentic loop — the LLM decides which tools to call and in what order
-# ---------------------------------------------------------------------------
 
 def run_agent(user_preferences: dict, api_key: str) -> dict:
     """
     Run the agentic stock recommendation workflow.
-    The LLM orchestrates the multi-step research process by deciding
-    which tools to call, analyzing results, and producing recommendations.
+    Step 1: Pre-fetch real stock data from yfinance (fast, no LLM needed)
+    Step 2: Send all data to LLM in a single call for analysis + recommendation
+    This avoids multi-round LLM tool calls that timeout on Render.
     """
     client = OpenAI(api_key=api_key)
-    system_prompt = """You are a professional stock investment research agent. Your job is to help users find the best stocks to invest in based on their preferences.
 
-You have access to tools that let you:
-1. Search for stocks in a specific industry
-2. Get detailed financial data for stocks
-3. Analyze risk profiles of stocks
-4. Get news sentiment for stocks
+    # Determine which tickers to research
+    industries_raw = user_preferences['industry']
+    if isinstance(industries_raw, list):
+        industry_text = ", ".join(industries_raw)
+    else:
+        industry_text = industries_raw
 
-WORKFLOW — follow these steps:
-1. First, search for stocks in the user's preferred industry using search_stocks_by_industry.
-2. Then, for the most promising candidates (at least 3-5 stocks), gather detailed data using get_stock_data.
-3. Analyze risk profiles for those candidates using analyze_risk_profile.
-4. Check news sentiment for the top candidates using get_news_sentiment.
-5. Based on ALL gathered data, provide your final recommendations.
+    # Pick tickers based on industry selection
+    if "any" in industry_text.lower():
+        # Grab top 2 from each of 5 major sectors
+        sectors = ["technology", "healthcare", "finance", "energy", "consumer"]
+        tickers = []
+        for s in sectors:
+            tickers.extend(INDUSTRY_TICKERS[s][:2])
+    elif "," in industry_text:
+        sectors = [_match_industry(s.strip()) for s in industry_text.split(",")]
+        tickers = []
+        for s in set(sectors):
+            tickers.extend(INDUSTRY_TICKERS.get(s, [])[:5])
+    else:
+        sector = _match_industry(industry_text)
+        tickers = INDUSTRY_TICKERS.get(sector, INDUSTRY_TICKERS["technology"])[:8]
 
-When you have finished all research, respond with a JSON object in this EXACT format (no markdown, no extra text):
+    # Step 1: Pre-fetch all stock data
+    stock_data = _prefetch_stock_data(tickers)
+
+    if not stock_data:
+        return {"error": "Could not fetch stock data. The data provider may be temporarily unavailable.", "recommendations": []}
+
+    # Step 2: Single LLM call with all data
+    system_prompt = """You are a professional stock investment research agent. You will receive real-time stock data and user preferences. Analyze the data and provide investment recommendations.
+
+Respond with ONLY a JSON object (no markdown fences, no extra text) in this EXACT format:
 {
     "recommendations": [
         {
@@ -337,9 +244,9 @@ When you have finished all research, respond with a JSON object in this EXACT fo
             "current_price": 123.45,
             "recommendation_score": 8.5,
             "suggested_allocation_pct": 40,
-            "reasoning": "2-3 sentence explanation of why this stock is recommended, referencing specific financial metrics, recent performance, and how it fits the user's risk tolerance and goals.",
-            "bull_case": "What could go right — growth catalysts, upcoming products, market tailwinds.",
-            "bear_case": "What could go wrong — risks, headwinds, competition.",
+            "reasoning": "2-3 sentence explanation referencing specific financial metrics and how it fits the user's goals.",
+            "bull_case": "Specific growth catalysts and upside potential for this company.",
+            "bear_case": "Specific risks and what could go wrong for this company.",
             "risk_level": "Very Low/Low/Medium/High/Very High",
             "key_metrics": {
                 "pe_ratio": 25.3,
@@ -357,109 +264,64 @@ When you have finished all research, respond with a JSON object in this EXACT fo
             }
         }
     ],
-    "portfolio_summary": "Detailed 2-3 sentence summary of the overall portfolio strategy, explaining the diversification approach and how it matches the user's risk tolerance, investment amount, and goals.",
+    "portfolio_summary": "2-3 sentence summary of the portfolio strategy and diversification approach.",
     "total_investment": 10000,
-    "risk_assessment": "Detailed assessment of overall portfolio risk including volatility expectations and what market conditions could help or hurt this portfolio."
+    "risk_assessment": "Assessment of overall portfolio risk and what market conditions help or hurt it."
 }
 
-IMPORTANT:
+RULES:
 - recommendation_score is 1-10 (10 = strongest buy)
-- suggested_allocation_pct values must sum to 100
-- Match the number of recommendations to what the user asked for
-- Tailor risk levels to the user's risk tolerance (5 levels: Very Low, Low, Medium, High, Very High)
-- For very conservative investors, favor blue-chip dividend aristocrats
-- For conservative investors, favor stable dividend-paying stocks with low volatility
-- For moderate investors, balance growth and stability
-- For aggressive investors, favor growth stocks with higher upside
-- For very aggressive investors, favor high-growth, high-momentum stocks
-- The reasoning field MUST be detailed — reference specific numbers from the data
-- The bull_case and bear_case MUST be specific to each company, not generic
-"""
+- suggested_allocation_pct values MUST sum to 100
+- Match the EXACT number of recommendations the user asked for
+- Use 5 risk levels: Very Low, Low, Medium, High, Very High
+- For very conservative: blue-chip dividend aristocrats with low volatility
+- For conservative: stable dividend payers
+- For moderate: balance growth and stability
+- For aggressive: growth stocks with higher upside
+- For very aggressive: high-growth, high-momentum stocks
+- Reasoning MUST reference specific numbers from the provided data
+- Bull/bear cases MUST be specific to each company
+- Use the actual data provided — do not make up numbers"""
 
-    industries = user_preferences['industry']
-    if isinstance(industries, list):
-        industry_text = ", ".join(industries)
-    else:
-        industry_text = industries
-
-    if "any" in industry_text.lower():
-        industry_instruction = "Search across multiple industries (technology, healthcare, finance, energy, consumer) to find the best opportunities regardless of sector."
-    elif "," in industry_text:
-        sectors = [s.strip() for s in industry_text.split(",")]
-        industry_instruction = f"Search for stocks across these industries: {', '.join(sectors)}. Use search_stocks_by_industry for each sector."
-    else:
-        industry_instruction = f"Start by searching for stocks in the {industry_text} industry, then analyze the most promising ones in detail."
-
-    user_message = f"""Please research and recommend stocks based on these preferences:
+    user_message = f"""USER PREFERENCES:
 - Investment Amount: ${user_preferences['investment_amount']:,.2f}
 - Risk Tolerance: {user_preferences['risk_level']}
 - Preferred Industries: {industry_text}
 - Number of Stocks Wanted: {user_preferences['num_stocks']}
-- Additional Notes: {user_preferences.get('notes', 'None')}
+- Notes: {user_preferences.get('notes', 'None')}
 
-{industry_instruction}"""
+REAL-TIME STOCK DATA:
+{json.dumps(stock_data, indent=2, default=str)}
 
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_message},
-    ]
+Analyze this data and select the best {user_preferences['num_stocks']} stocks for this investor. Respond with ONLY the JSON object."""
 
-    # Agentic loop — keep going until the LLM produces a final answer
-    max_iterations = 15
-    for _ in range(max_iterations):
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=messages,
-            tools=TOOLS,
-            tool_choice="auto",
-            temperature=0.3,
-        )
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=0.3,
+    )
 
-        msg = response.choices[0].message
-        messages.append(msg)
+    final_text = response.choices[0].message.content or ""
 
-        # If no tool calls, the agent is done
-        if not msg.tool_calls:
-            break
-
-        # Execute each tool call the agent requested
-        for tool_call in msg.tool_calls:
-            fn_name = tool_call.function.name
-            fn_args = json.loads(tool_call.function.arguments)
-            fn = TOOL_FUNCTIONS.get(fn_name)
-            if fn:
-                result = fn(**fn_args)
-            else:
-                result = {"error": f"Unknown tool: {fn_name}"}
-
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tool_call.id,
-                "content": json.dumps(result, default=str),
-            })
-
-    # Parse the final response
-    final_text = msg.content or ""
+    # Parse the response
     try:
-        # Strip markdown code fences if present
         cleaned = final_text.strip()
         if cleaned.startswith("```"):
-            # Remove opening fence (possibly with language tag like ```json)
             cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
         if cleaned.endswith("```"):
             cleaned = cleaned[:-3]
         cleaned = cleaned.strip()
-
-        # Try to find JSON object in the response if not starting with {
         if not cleaned.startswith("{"):
             start = cleaned.find("{")
             end = cleaned.rfind("}") + 1
             if start != -1 and end > start:
                 cleaned = cleaned[start:end]
-
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        return {"error": f"The AI agent returned an unparseable response. Please try again.", "raw_response": final_text, "recommendations": []}
+        return {"error": "The AI agent returned an unparseable response. Please try again.", "raw_response": final_text, "recommendations": []}
 
 
 # ---------------------------------------------------------------------------
