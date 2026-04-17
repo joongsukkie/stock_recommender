@@ -6,6 +6,7 @@ analysis, and recommendation with projected price forecasting.
 
 import json
 import os
+import time
 from datetime import datetime, timedelta
 
 import numpy as np
@@ -102,6 +103,67 @@ INDUSTRY_TICKERS = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Simple in-memory cache + retry for yfinance (avoids rate limits)
+# ---------------------------------------------------------------------------
+_cache = {}
+_CACHE_TTL = 300  # 5 minutes
+
+
+def _get_ticker_info(ticker: str) -> dict:
+    """Get ticker info with caching and retry logic."""
+    cache_key = f"info:{ticker}"
+    if cache_key in _cache:
+        ts, data = _cache[cache_key]
+        if time.time() - ts < _CACHE_TTL:
+            return data
+    for attempt in range(3):
+        try:
+            data = yf.Ticker(ticker).info
+            _cache[cache_key] = (time.time(), data)
+            return data
+        except Exception:
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+    return {}
+
+
+def _get_ticker_history(ticker: str, period: str = "1y") -> pd.DataFrame:
+    """Get ticker history with caching and retry logic."""
+    cache_key = f"hist:{ticker}:{period}"
+    if cache_key in _cache:
+        ts, data = _cache[cache_key]
+        if time.time() - ts < _CACHE_TTL:
+            return data
+    for attempt in range(3):
+        try:
+            data = yf.Ticker(ticker).history(period=period)
+            _cache[cache_key] = (time.time(), data)
+            return data
+        except Exception:
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+    return pd.DataFrame()
+
+
+def _get_ticker_news(ticker: str) -> list:
+    """Get ticker news with caching and retry logic."""
+    cache_key = f"news:{ticker}"
+    if cache_key in _cache:
+        ts, data = _cache[cache_key]
+        if time.time() - ts < _CACHE_TTL:
+            return data
+    for attempt in range(3):
+        try:
+            data = yf.Ticker(ticker).news or []
+            _cache[cache_key] = (time.time(), data)
+            return data
+        except Exception:
+            if attempt < 2:
+                time.sleep(1.5 * (attempt + 1))
+    return []
+
+
 def _match_industry(query: str) -> str:
     """Fuzzy-match a user's industry query to our known sectors."""
     query_lower = query.lower()
@@ -151,99 +213,84 @@ def search_stocks_by_industry(industry: str, count: int) -> dict:
     tickers = INDUSTRY_TICKERS.get(sector, INDUSTRY_TICKERS["technology"])[:count]
     results = []
     for t in tickers:
-        try:
-            info = yf.Ticker(t).info
-            results.append({
-                "ticker": t,
-                "name": info.get("shortName", t),
-                "sector": info.get("sector", sector),
-                "market_cap": info.get("marketCap", "N/A"),
-                "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
-            })
-        except Exception:
-            results.append({"ticker": t, "name": t, "sector": sector, "market_cap": "N/A", "current_price": "N/A"})
+        info = _get_ticker_info(t)
+        results.append({
+            "ticker": t,
+            "name": info.get("shortName", t),
+            "sector": info.get("sector", sector),
+            "market_cap": info.get("marketCap", "N/A"),
+            "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
+        })
     return {"industry": sector, "stocks": results}
 
 
 def get_stock_data(ticker: str) -> dict:
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        hist = stock.history(period="6mo")
-        recent_prices = []
-        if not hist.empty:
-            last_5 = hist.tail(5)
-            for date, row in last_5.iterrows():
-                recent_prices.append({"date": str(date.date()), "close": round(row["Close"], 2)})
+    info = _get_ticker_info(ticker)
+    hist = _get_ticker_history(ticker, "6mo")
+    recent_prices = []
+    if not hist.empty:
+        last_5 = hist.tail(5)
+        for date, row in last_5.iterrows():
+            recent_prices.append({"date": str(date.date()), "close": round(row["Close"], 2)})
 
-        return {
-            "ticker": ticker,
-            "name": info.get("shortName", ticker),
-            "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
-            "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
-            "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
-            "pe_ratio": info.get("trailingPE", "N/A"),
-            "forward_pe": info.get("forwardPE", "N/A"),
-            "dividend_yield": info.get("dividendYield", "N/A"),
-            "market_cap": info.get("marketCap", "N/A"),
-            "revenue": info.get("totalRevenue", "N/A"),
-            "profit_margin": info.get("profitMargins", "N/A"),
-            "debt_to_equity": info.get("debtToEquity", "N/A"),
-            "earnings_growth": info.get("earningsGrowth", "N/A"),
-            "revenue_growth": info.get("revenueGrowth", "N/A"),
-            "recommendation": info.get("recommendationKey", "N/A"),
-            "target_price": info.get("targetMeanPrice", "N/A"),
-            "recent_prices": recent_prices,
-        }
-    except Exception as e:
-        return {"ticker": ticker, "error": str(e)}
+    return {
+        "ticker": ticker,
+        "name": info.get("shortName", ticker),
+        "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
+        "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
+        "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
+        "pe_ratio": info.get("trailingPE", "N/A"),
+        "forward_pe": info.get("forwardPE", "N/A"),
+        "dividend_yield": info.get("dividendYield", "N/A"),
+        "market_cap": info.get("marketCap", "N/A"),
+        "revenue": info.get("totalRevenue", "N/A"),
+        "profit_margin": info.get("profitMargins", "N/A"),
+        "debt_to_equity": info.get("debtToEquity", "N/A"),
+        "earnings_growth": info.get("earningsGrowth", "N/A"),
+        "revenue_growth": info.get("revenueGrowth", "N/A"),
+        "recommendation": info.get("recommendationKey", "N/A"),
+        "target_price": info.get("targetMeanPrice", "N/A"),
+        "recent_prices": recent_prices,
+    }
 
 
 def analyze_risk_profile(ticker: str) -> dict:
-    try:
-        stock = yf.Ticker(ticker)
-        info = stock.info
-        hist = stock.history(period="1y")
-        volatility = None
-        if not hist.empty and len(hist) > 20:
-            returns = hist["Close"].pct_change().dropna()
-            volatility = round(float(returns.std() * np.sqrt(252) * 100), 2)
+    info = _get_ticker_info(ticker)
+    hist = _get_ticker_history(ticker, "1y")
+    volatility = None
+    if not hist.empty and len(hist) > 20:
+        returns = hist["Close"].pct_change().dropna()
+        volatility = round(float(returns.std() * np.sqrt(252) * 100), 2)
 
-        return {
-            "ticker": ticker,
-            "beta": info.get("beta", "N/A"),
-            "annual_volatility_pct": volatility or "N/A",
-            "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
-            "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
-            "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
-            "debt_to_equity": info.get("debtToEquity", "N/A"),
-            "current_ratio": info.get("currentRatio", "N/A"),
-            "risk_assessment": (
-                "High" if (volatility and volatility > 40) else
-                "Medium" if (volatility and volatility > 25) else
-                "Low" if volatility else "Unknown"
-            ),
-        }
-    except Exception as e:
-        return {"ticker": ticker, "error": str(e)}
+    return {
+        "ticker": ticker,
+        "beta": info.get("beta", "N/A"),
+        "annual_volatility_pct": volatility or "N/A",
+        "52_week_high": info.get("fiftyTwoWeekHigh", "N/A"),
+        "52_week_low": info.get("fiftyTwoWeekLow", "N/A"),
+        "current_price": info.get("currentPrice") or info.get("regularMarketPrice", "N/A"),
+        "debt_to_equity": info.get("debtToEquity", "N/A"),
+        "current_ratio": info.get("currentRatio", "N/A"),
+        "risk_assessment": (
+            "High" if (volatility and volatility > 40) else
+            "Medium" if (volatility and volatility > 25) else
+            "Low" if volatility else "Unknown"
+        ),
+    }
 
 
 def get_news_sentiment(ticker: str) -> dict:
-    try:
-        stock = yf.Ticker(ticker)
-        news = stock.news or []
-        headlines = []
-        for item in news[:5]:
-            content = item.get("content", {})
-            title = content.get("title") if isinstance(content, dict) else item.get("title", "")
-            headlines.append(title or "N/A")
-        return {
-            "ticker": ticker,
-            "recent_headlines": headlines,
-            "headline_count": len(headlines),
-        }
-    except Exception as e:
-        return {"ticker": ticker, "error": str(e), "recent_headlines": []}
+    news = _get_ticker_news(ticker)
+    headlines = []
+    for item in news[:5]:
+        content = item.get("content", {})
+        title = content.get("title") if isinstance(content, dict) else item.get("title", "")
+        headlines.append(title or "N/A")
+    return {
+        "ticker": ticker,
+        "recent_headlines": headlines,
+        "headline_count": len(headlines),
+    }
 
 
 # Map tool names to functions
@@ -290,40 +337,67 @@ When you have finished all research, respond with a JSON object in this EXACT fo
             "current_price": 123.45,
             "recommendation_score": 8.5,
             "suggested_allocation_pct": 40,
-            "reasoning": "Brief explanation of why this stock is recommended",
-            "risk_level": "Low/Medium/High",
+            "reasoning": "2-3 sentence explanation of why this stock is recommended, referencing specific financial metrics, recent performance, and how it fits the user's risk tolerance and goals.",
+            "bull_case": "What could go right — growth catalysts, upcoming products, market tailwinds.",
+            "bear_case": "What could go wrong — risks, headwinds, competition.",
+            "risk_level": "Very Low/Low/Medium/High/Very High",
             "key_metrics": {
                 "pe_ratio": 25.3,
+                "forward_pe": 22.1,
                 "dividend_yield": 0.015,
                 "beta": 1.1,
                 "annual_volatility_pct": 28.5,
                 "revenue_growth": 0.12,
-                "target_price": 150.0
+                "earnings_growth": 0.15,
+                "profit_margin": 0.22,
+                "debt_to_equity": 45.2,
+                "target_price": 150.0,
+                "52_week_high": 180.0,
+                "52_week_low": 110.0
             }
         }
     ],
-    "portfolio_summary": "Brief summary of the overall portfolio strategy and how it matches the user's preferences",
+    "portfolio_summary": "Detailed 2-3 sentence summary of the overall portfolio strategy, explaining the diversification approach and how it matches the user's risk tolerance, investment amount, and goals.",
     "total_investment": 10000,
-    "risk_assessment": "Overall portfolio risk assessment"
+    "risk_assessment": "Detailed assessment of overall portfolio risk including volatility expectations and what market conditions could help or hurt this portfolio."
 }
 
 IMPORTANT:
 - recommendation_score is 1-10 (10 = strongest buy)
 - suggested_allocation_pct values must sum to 100
 - Match the number of recommendations to what the user asked for
-- Tailor risk levels to the user's risk tolerance
-- For conservative investors, favor stable dividend-paying stocks
+- Tailor risk levels to the user's risk tolerance (5 levels: Very Low, Low, Medium, High, Very High)
+- For very conservative investors, favor blue-chip dividend aristocrats
+- For conservative investors, favor stable dividend-paying stocks with low volatility
+- For moderate investors, balance growth and stability
 - For aggressive investors, favor growth stocks with higher upside
+- For very aggressive investors, favor high-growth, high-momentum stocks
+- The reasoning field MUST be detailed — reference specific numbers from the data
+- The bull_case and bear_case MUST be specific to each company, not generic
 """
+
+    industries = user_preferences['industry']
+    if isinstance(industries, list):
+        industry_text = ", ".join(industries)
+    else:
+        industry_text = industries
+
+    if "any" in industry_text.lower():
+        industry_instruction = "Search across multiple industries (technology, healthcare, finance, energy, consumer) to find the best opportunities regardless of sector."
+    elif "," in industry_text:
+        sectors = [s.strip() for s in industry_text.split(",")]
+        industry_instruction = f"Search for stocks across these industries: {', '.join(sectors)}. Use search_stocks_by_industry for each sector."
+    else:
+        industry_instruction = f"Start by searching for stocks in the {industry_text} industry, then analyze the most promising ones in detail."
 
     user_message = f"""Please research and recommend stocks based on these preferences:
 - Investment Amount: ${user_preferences['investment_amount']:,.2f}
 - Risk Tolerance: {user_preferences['risk_level']}
-- Preferred Industry: {user_preferences['industry']}
+- Preferred Industries: {industry_text}
 - Number of Stocks Wanted: {user_preferences['num_stocks']}
 - Additional Notes: {user_preferences.get('notes', 'None')}
 
-Start by searching for stocks in the {user_preferences['industry']} industry, then analyze the most promising ones in detail."""
+{industry_instruction}"""
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -393,12 +467,11 @@ def generate_projection(ticker: str, months_ahead: int = 6) -> dict:
     - Volatility-based confidence bands
     - Earnings/revenue growth momentum
     """
-    stock = yf.Ticker(ticker)
-    info = stock.info
-    hist = stock.history(period="1y")
+    info = _get_ticker_info(ticker)
+    hist = _get_ticker_history(ticker, "1y")
 
     if hist.empty:
-        return {"error": "No historical data available"}
+        return {"error": "No historical data available. The data provider may be temporarily rate-limited — please try again in a moment."}
 
     # Historical data
     dates = [d.strftime("%Y-%m-%d") for d in hist.index]
@@ -530,10 +603,16 @@ def recommend():
     if not api_key:
         return jsonify({"error": "Please enter your OpenAI API key."}), 400
     try:
+        # industry can be a list or comma-separated string from the frontend
+        raw_industry = data.get("industry", "technology")
+        if isinstance(raw_industry, list):
+            industry = ", ".join(raw_industry)
+        else:
+            industry = raw_industry
         preferences = {
             "investment_amount": float(data.get("investment_amount", 10000)),
             "risk_level": data.get("risk_level", "moderate"),
-            "industry": data.get("industry", "technology"),
+            "industry": industry,
             "num_stocks": int(data.get("num_stocks", 3)),
             "notes": data.get("notes", ""),
         }

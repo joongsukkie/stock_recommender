@@ -246,13 +246,9 @@
             background: #0a0e17;
             border: 1px solid #1e293b;
             border-radius: 10px;
-            padding: 20px;
+            padding: 22px;
             cursor: pointer;
             transition: all 0.2s;
-            display: grid;
-            grid-template-columns: auto 1fr auto;
-            gap: 16px;
-            align-items: center;
         }
 
         .rec-card:hover {
@@ -263,6 +259,14 @@
         .rec-card.selected {
             border-color: #22c55e;
             background: #0a1a12;
+        }
+
+        .rec-header {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 14px;
+            align-items: center;
+            margin-bottom: 14px;
         }
 
         .rec-rank {
@@ -292,14 +296,70 @@
             font-weight: 600;
         }
 
-        .rec-info .reasoning {
+        .rec-body {
+            margin-top: 10px;
+        }
+
+        .rec-reasoning {
+            font-size: 13px;
+            color: #cbd5e1;
+            line-height: 1.6;
+            margin-bottom: 12px;
+        }
+
+        .rec-cases {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+
+        .rec-case {
+            background: #111827;
+            border-radius: 8px;
+            padding: 12px;
             font-size: 12px;
-            color: #94a3b8;
-            margin-top: 6px;
             line-height: 1.5;
         }
 
-        .rec-metrics {
+        .rec-case .case-label {
+            font-weight: 700;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+
+        .rec-case.bull .case-label { color: #4ade80; }
+        .rec-case.bear .case-label { color: #f87171; }
+        .rec-case .case-text { color: #94a3b8; }
+
+        .rec-metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+            gap: 8px;
+        }
+
+        .rec-metric {
+            background: #111827;
+            border-radius: 6px;
+            padding: 8px 10px;
+        }
+
+        .rec-metric .m-label {
+            font-size: 10px;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+        }
+
+        .rec-metric .m-value {
+            font-size: 14px;
+            font-weight: 600;
+            color: #e2e8f0;
+        }
+
+        .rec-top-right {
             text-align: right;
             display: flex;
             flex-direction: column;
@@ -335,9 +395,44 @@
             font-weight: 600;
         }
 
+        .risk-vlow { background: #052e16; color: #86efac; }
         .risk-low { background: #052e16; color: #4ade80; }
         .risk-medium { background: #422006; color: #fbbf24; }
         .risk-high { background: #450a0a; color: #f87171; }
+        .risk-vhigh { background: #450a0a; color: #ef4444; }
+
+        /* Multi-select industry chips */
+        .chip-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .chip {
+            padding: 7px 14px;
+            border: 1px solid #2a3050;
+            border-radius: 20px;
+            background: #0a0e17;
+            color: #94a3b8;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.15s;
+            user-select: none;
+        }
+
+        .chip:hover { border-color: #3b82f6; color: #e2e8f0; }
+
+        .chip.selected {
+            background: #1e3a5f;
+            border-color: #3b82f6;
+            color: #60a5fa;
+        }
+
+        .chip.any-chip.selected {
+            background: #422006;
+            border-color: #f59e0b;
+            color: #fbbf24;
+        }
 
         .portfolio-summary {
             background: #0a0e17;
@@ -438,8 +533,9 @@
 
         @media (max-width: 640px) {
             .form-grid { grid-template-columns: 1fr; }
-            .rec-card { grid-template-columns: 1fr; }
-            .rec-metrics { text-align: left; flex-direction: row; gap: 12px; }
+            .rec-header { grid-template-columns: 1fr; }
+            .rec-top-right { text-align: left; flex-direction: row; gap: 12px; }
+            .rec-cases { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -483,34 +579,41 @@
             <div class="form-group">
                 <label for="num_stocks">Number of Stocks</label>
                 <select id="num_stocks">
+                    <option value="1">1 stock</option>
                     <option value="2">2 stocks</option>
                     <option value="3" selected>3 stocks</option>
                     <option value="4">4 stocks</option>
                     <option value="5">5 stocks</option>
+                    <option value="6">6 stocks</option>
+                    <option value="7">7 stocks</option>
+                    <option value="8">8 stocks</option>
                 </select>
             </div>
             <div class="form-group">
                 <label for="risk_level">Risk Tolerance</label>
                 <select id="risk_level">
+                    <option value="very conservative">Very Conservative (Minimal Risk)</option>
                     <option value="conservative">Conservative (Low Risk)</option>
                     <option value="moderate" selected>Moderate (Balanced)</option>
                     <option value="aggressive">Aggressive (High Risk)</option>
+                    <option value="very aggressive">Very Aggressive (Maximum Growth)</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label for="industry">Preferred Industry / Sector</label>
-                <select id="industry">
-                    <option value="technology">Technology</option>
-                    <option value="healthcare">Healthcare</option>
-                    <option value="finance">Finance</option>
-                    <option value="energy">Energy</option>
-                    <option value="consumer">Consumer / Retail</option>
-                    <option value="industrials">Industrials</option>
-                    <option value="real estate">Real Estate</option>
-                    <option value="telecommunications">Telecommunications</option>
-                    <option value="materials">Materials</option>
-                    <option value="utilities">Utilities</option>
-                </select>
+            <div class="form-group full-width">
+                <label>Preferred Industries / Sectors <span style="font-weight:400;color:#64748b;">(select one or more)</span></label>
+                <div class="chip-group" id="industry-chips">
+                    <div class="chip any-chip selected" data-value="any" onclick="toggleChip(this)">Any / Best Picks</div>
+                    <div class="chip" data-value="technology" onclick="toggleChip(this)">Technology</div>
+                    <div class="chip" data-value="healthcare" onclick="toggleChip(this)">Healthcare</div>
+                    <div class="chip" data-value="finance" onclick="toggleChip(this)">Finance</div>
+                    <div class="chip" data-value="energy" onclick="toggleChip(this)">Energy</div>
+                    <div class="chip" data-value="consumer" onclick="toggleChip(this)">Consumer / Retail</div>
+                    <div class="chip" data-value="industrials" onclick="toggleChip(this)">Industrials</div>
+                    <div class="chip" data-value="real estate" onclick="toggleChip(this)">Real Estate</div>
+                    <div class="chip" data-value="telecommunications" onclick="toggleChip(this)">Telecom</div>
+                    <div class="chip" data-value="materials" onclick="toggleChip(this)">Materials</div>
+                    <div class="chip" data-value="utilities" onclick="toggleChip(this)">Utilities</div>
+                </div>
             </div>
             <div class="form-group full-width">
                 <label for="notes">Additional Preferences (optional)</label>
@@ -579,6 +682,31 @@
     let currentTicker = null;
     let recommendations = null;
 
+    // Industry chip toggle logic
+    function toggleChip(el) {
+        const isAny = el.dataset.value === 'any';
+        const allChips = document.querySelectorAll('#industry-chips .chip');
+        const anyChip = document.querySelector('#industry-chips .any-chip');
+
+        if (isAny) {
+            // If clicking "Any", deselect all others and select "Any"
+            allChips.forEach(c => c.classList.remove('selected'));
+            el.classList.add('selected');
+        } else {
+            // Deselect "Any" when picking a specific industry
+            anyChip.classList.remove('selected');
+            el.classList.toggle('selected');
+            // If nothing is selected, re-select "Any"
+            const selected = document.querySelectorAll('#industry-chips .chip.selected');
+            if (selected.length === 0) anyChip.classList.add('selected');
+        }
+    }
+
+    function getSelectedIndustries() {
+        const selected = document.querySelectorAll('#industry-chips .chip.selected');
+        return Array.from(selected).map(c => c.dataset.value);
+    }
+
     // Step management
     function setStep(n) {
         for (let i = 1; i <= 4; i++) {
@@ -620,11 +748,12 @@
         setStep(2);
         const loadingInterval = animateLoadingSteps();
 
+        const industries = getSelectedIndustries();
         const payload = {
             api_key: document.getElementById('api_key').value,
             investment_amount: parseFloat(document.getElementById('investment_amount').value),
             risk_level: document.getElementById('risk_level').value,
-            industry: document.getElementById('industry').value,
+            industry: industries.length === 1 ? industries[0] : industries,
             num_stocks: parseInt(document.getElementById('num_stocks').value),
             notes: document.getElementById('notes').value,
         };
@@ -663,6 +792,23 @@
         box.classList.remove('hidden');
     }
 
+    function fmtMetric(val, type) {
+        if (val === null || val === undefined || val === 'N/A') return 'N/A';
+        if (type === 'pct') return (val * 100).toFixed(1) + '%';
+        if (type === 'money') return '$' + Number(val).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2});
+        if (type === 'ratio') return Number(val).toFixed(1);
+        return String(val);
+    }
+
+    function getRiskClass(risk) {
+        const r = (risk || '').toLowerCase();
+        if (r.includes('very low')) return 'risk-vlow';
+        if (r.includes('very high')) return 'risk-vhigh';
+        if (r.includes('low')) return 'risk-low';
+        if (r.includes('high')) return 'risk-high';
+        return 'risk-medium';
+    }
+
     function renderRecommendations(data, investmentAmount) {
         const grid = document.getElementById('rec-grid');
         grid.innerHTML = '';
@@ -677,24 +823,57 @@
 
             const scoreClass = rec.recommendation_score >= 7 ? 'score-high' :
                                rec.recommendation_score >= 5 ? 'score-mid' : 'score-low';
-            const riskClass = (rec.risk_level || '').toLowerCase().includes('low') ? 'risk-low' :
-                              (rec.risk_level || '').toLowerCase().includes('high') ? 'risk-high' : 'risk-medium';
+            const riskClass = getRiskClass(rec.risk_level);
 
             const allocation = rec.suggested_allocation_pct || 0;
             const dollarAlloc = (investmentAmount * allocation / 100).toFixed(0);
+            const km = rec.key_metrics || {};
+
+            // Build metrics row
+            const metrics = [
+                { label: 'P/E Ratio', value: fmtMetric(km.pe_ratio, 'ratio') },
+                { label: 'Forward P/E', value: fmtMetric(km.forward_pe, 'ratio') },
+                { label: 'Div Yield', value: km.dividend_yield ? fmtMetric(km.dividend_yield, 'pct') : 'N/A' },
+                { label: 'Beta', value: fmtMetric(km.beta, 'ratio') },
+                { label: 'Volatility', value: km.annual_volatility_pct ? km.annual_volatility_pct.toFixed(1) + '%' : 'N/A' },
+                { label: 'Rev Growth', value: km.revenue_growth ? fmtMetric(km.revenue_growth, 'pct') : 'N/A' },
+                { label: 'Earnings Growth', value: km.earnings_growth ? fmtMetric(km.earnings_growth, 'pct') : 'N/A' },
+                { label: 'Profit Margin', value: km.profit_margin ? fmtMetric(km.profit_margin, 'pct') : 'N/A' },
+                { label: 'Target Price', value: km.target_price ? fmtMetric(km.target_price, 'money') : 'N/A' },
+                { label: '52W Range', value: km['52_week_low'] && km['52_week_high'] ? `$${km['52_week_low']} – $${km['52_week_high']}` : 'N/A' },
+            ].filter(m => m.value !== 'N/A');
+
+            const metricsHtml = metrics.map(m =>
+                `<div class="rec-metric"><div class="m-label">${m.label}</div><div class="m-value">${m.value}</div></div>`
+            ).join('');
+
+            // Bull/bear cases
+            const bullCase = rec.bull_case || '';
+            const bearCase = rec.bear_case || '';
+            const casesHtml = (bullCase || bearCase) ? `
+                <div class="rec-cases">
+                    ${bullCase ? `<div class="rec-case bull"><div class="case-label">Bull Case</div><div class="case-text">${bullCase}</div></div>` : ''}
+                    ${bearCase ? `<div class="rec-case bear"><div class="case-label">Bear Case</div><div class="case-text">${bearCase}</div></div>` : ''}
+                </div>` : '';
 
             card.innerHTML = `
-                <div class="rec-rank ${rankClasses[i] || 'other'}">${i + 1}</div>
-                <div class="rec-info">
-                    <h3>${rec.name || rec.ticker}</h3>
-                    <span class="ticker">${rec.ticker}</span>
-                    <span class="risk-badge ${riskClass}" style="margin-left:8px">${rec.risk_level || 'N/A'} Risk</span>
-                    <p class="reasoning">${rec.reasoning || ''}</p>
+                <div class="rec-header">
+                    <div class="rec-rank ${rankClasses[i] || 'other'}">${i + 1}</div>
+                    <div class="rec-info">
+                        <h3>${rec.name || rec.ticker}</h3>
+                        <span class="ticker">${rec.ticker}</span>
+                        <span class="risk-badge ${riskClass}" style="margin-left:8px">${rec.risk_level || 'N/A'} Risk</span>
+                    </div>
+                    <div class="rec-top-right">
+                        <span class="rec-price">$${(rec.current_price || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
+                        <span class="rec-score ${scoreClass}">${rec.recommendation_score}/10</span>
+                        <span class="rec-alloc">${allocation}% &middot; $${parseInt(dollarAlloc).toLocaleString()}</span>
+                    </div>
                 </div>
-                <div class="rec-metrics">
-                    <span class="rec-price">$${(rec.current_price || 0).toLocaleString(undefined, {minimumFractionDigits:2, maximumFractionDigits:2})}</span>
-                    <span class="rec-score ${scoreClass}">${rec.recommendation_score}/10</span>
-                    <span class="rec-alloc">${allocation}% &middot; $${parseInt(dollarAlloc).toLocaleString()}</span>
+                <div class="rec-body">
+                    <div class="rec-reasoning">${rec.reasoning || ''}</div>
+                    ${casesHtml}
+                    <div class="rec-metrics-grid">${metricsHtml}</div>
                 </div>
             `;
             grid.appendChild(card);
@@ -703,7 +882,7 @@
         const summary = document.getElementById('portfolio-summary');
         summary.innerHTML = `
             <strong>Portfolio Strategy:</strong> ${data.portfolio_summary || 'N/A'}
-            <br><strong>Risk Assessment:</strong> ${data.risk_assessment || 'N/A'}
+            <br><br><strong>Risk Assessment:</strong> ${data.risk_assessment || 'N/A'}
         `;
     }
 
@@ -717,7 +896,7 @@
         await loadProjection(ticker, 6);
     }
 
-    async function loadProjection(ticker, months) {
+    async function loadProjection(ticker, months, retries = 3) {
         const chartDiv = document.getElementById('chart');
         const loading = document.getElementById('chart-loading');
         const metaGrid = document.getElementById('meta-grid');
@@ -727,27 +906,40 @@
         loading.classList.add('visible');
         loading.style.display = 'block';
 
-        try {
-            const res = await fetch(`/api/projection/${ticker}?months=${months}`);
-            const data = await res.json();
+        for (let attempt = 0; attempt < retries; attempt++) {
+            try {
+                const res = await fetch(`/api/projection/${ticker}?months=${months}`);
+                const data = await res.json();
 
-            loading.classList.remove('visible');
-            loading.style.display = 'none';
+                if (data.error && attempt < retries - 1) {
+                    // Wait and retry on error (likely rate limit)
+                    await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+                    continue;
+                }
 
-            if (data.error) {
-                showError(data.error);
+                loading.classList.remove('visible');
+                loading.style.display = 'none';
+
+                if (data.error) {
+                    showError(data.error);
+                    return;
+                }
+
+                document.getElementById('chart-title').textContent =
+                    `${data.name} (${data.ticker}) — Price Projection`;
+
+                renderChart(data);
+                renderMeta(data);
                 return;
+            } catch (err) {
+                if (attempt < retries - 1) {
+                    await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
+                    continue;
+                }
+                loading.classList.remove('visible');
+                loading.style.display = 'none';
+                showError('Failed to load projection data. Please try again.');
             }
-
-            document.getElementById('chart-title').textContent =
-                `${data.name} (${data.ticker}) — Price Projection`;
-
-            renderChart(data);
-            renderMeta(data);
-        } catch (err) {
-            loading.classList.remove('visible');
-            loading.style.display = 'none';
-            showError('Failed to load projection data.');
         }
     }
 
