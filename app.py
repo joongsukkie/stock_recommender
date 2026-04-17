@@ -444,13 +444,22 @@ IMPORTANT:
         # Strip markdown code fences if present
         cleaned = final_text.strip()
         if cleaned.startswith("```"):
+            # Remove opening fence (possibly with language tag like ```json)
             cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
-            if cleaned.endswith("```"):
-                cleaned = cleaned[:-3]
-            cleaned = cleaned.strip()
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
+        # Try to find JSON object in the response if not starting with {
+        if not cleaned.startswith("{"):
+            start = cleaned.find("{")
+            end = cleaned.rfind("}") + 1
+            if start != -1 and end > start:
+                cleaned = cleaned[start:end]
+
         return json.loads(cleaned)
     except json.JSONDecodeError:
-        return {"raw_response": final_text, "recommendations": []}
+        return {"error": f"The AI agent returned an unparseable response. Please try again.", "raw_response": final_text, "recommendations": []}
 
 
 # ---------------------------------------------------------------------------
@@ -619,7 +628,17 @@ def recommend():
         result = run_agent(preferences, api_key=api_key)
         return jsonify(result)
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        error_msg = str(e)
+        # Provide friendlier messages for common errors
+        if "Incorrect API key" in error_msg or "invalid_api_key" in error_msg:
+            error_msg = "Invalid OpenAI API key. Please check your key and try again."
+        elif "Rate limit" in error_msg or "rate_limit" in error_msg:
+            error_msg = "OpenAI rate limit reached. Please wait a moment and try again."
+        elif "insufficient_quota" in error_msg:
+            error_msg = "Your OpenAI account has insufficient credits. Please add credits at platform.openai.com."
+        elif "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            error_msg = "The request timed out. Please try again — the AI agent needs 30-60 seconds to research stocks."
+        return jsonify({"error": error_msg}), 500
 
 
 @app.route("/api/projection/<ticker>")

@@ -775,12 +775,20 @@
                 return;
             }
 
+            // Check if we actually got recommendations
+            if (!data.recommendations || data.recommendations.length === 0) {
+                showError('The AI agent did not return any recommendations. This can happen if the data provider is rate-limited. Please try again in a moment.');
+                setStep(1);
+                btn.disabled = false;
+                return;
+            }
+
             recommendations = data;
             renderRecommendations(data, payload.investment_amount);
             setStep(3);
         } catch (err) {
             clearInterval(loadingInterval);
-            showError('Failed to get recommendations. Make sure your OpenAI API key is set.');
+            showError('Failed to get recommendations: ' + (err.message || 'Network error or timeout. Please try again.'));
             setStep(1);
         }
         btn.disabled = false;
