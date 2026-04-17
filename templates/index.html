@@ -765,8 +765,22 @@
                 body: JSON.stringify(payload),
             });
 
-            const data = await res.json();
             clearInterval(loadingInterval);
+
+            // Check if the response is actually JSON (Render returns HTML on timeout/crash)
+            const contentType = res.headers.get('content-type') || '';
+            if (!contentType.includes('application/json')) {
+                setStep(1);
+                if (res.status === 502 || res.status === 503 || res.status === 504) {
+                    showError('The server timed out while the AI agent was researching. This usually means the request took too long. Please try again — it can take up to 60 seconds.');
+                } else {
+                    showError(`Server returned an unexpected response (HTTP ${res.status}). The app may still be deploying — wait 1-2 minutes and try again.`);
+                }
+                btn.disabled = false;
+                return;
+            }
+
+            const data = await res.json();
 
             if (data.error) {
                 setStep(1);
