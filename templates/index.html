@@ -710,7 +710,6 @@
     // Step management
     function setStep(n) {
         for (let i = 1; i <= 4; i++) {
-            document.getElementById(`step${i}`).classList.toggle('hidden', i !== n && !(i === 2 && n === 2));
             const ind = document.getElementById(`step${i}-indicator`);
             ind.classList.remove('active', 'completed');
             if (i < n) ind.classList.add('completed');
@@ -720,7 +719,7 @@
         for (let i = 1; i <= 4; i++) {
             document.getElementById(`step${i}`).classList.toggle('hidden', i !== n);
         }
-        document.getElementById('error-box').classList.add('hidden');
+        // Don't hide error box here — let showError control it
     }
 
     // Animate loading steps
@@ -744,6 +743,7 @@
         e.preventDefault();
         const btn = document.getElementById('submit-btn');
         btn.disabled = true;
+        clearError();
 
         setStep(2);
         const loadingInterval = animateLoadingSteps();
@@ -769,16 +769,16 @@
             clearInterval(loadingInterval);
 
             if (data.error) {
-                showError(data.error);
                 setStep(1);
+                showError(data.error);
                 btn.disabled = false;
                 return;
             }
 
             // Check if we actually got recommendations
             if (!data.recommendations || data.recommendations.length === 0) {
-                showError('The AI agent did not return any recommendations. This can happen if the data provider is rate-limited. Please try again in a moment.');
                 setStep(1);
+                showError('The AI agent did not return any recommendations. This can happen if the data provider is rate-limited. Please try again in a moment.' + (data.raw_response ? ' Raw response: ' + data.raw_response.substring(0, 300) : ''));
                 btn.disabled = false;
                 return;
             }
@@ -788,16 +788,23 @@
             setStep(3);
         } catch (err) {
             clearInterval(loadingInterval);
-            showError('Failed to get recommendations: ' + (err.message || 'Network error or timeout. Please try again.'));
             setStep(1);
+            showError('Failed to get recommendations: ' + (err.message || 'Network error or timeout. Please try again.'));
         }
         btn.disabled = false;
     });
 
     function showError(msg) {
+        console.error('Stock Recommender Error:', msg);
         const box = document.getElementById('error-box');
-        box.textContent = msg;
+        box.innerHTML = '<strong>Error:</strong> ' + msg;
         box.classList.remove('hidden');
+        // Scroll to error so user sees it
+        box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    function clearError() {
+        document.getElementById('error-box').classList.add('hidden');
     }
 
     function fmtMetric(val, type) {
